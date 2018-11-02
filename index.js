@@ -22,21 +22,46 @@ const fileRead = (filePath, callback) => {
   })
 }
 
-fileRead(path.join(__dirname, 'source'), (sheets, filename) => {
-  let RATE = '覆盖占比'
-  let RESULT_CATEGORY = '结果类别'
-  let positions = sheets.map(sheet => {
-    let sheetJson = xlsx.utils.sheet_to_json(sheet)
-    let result = {}
-    sheetJson.forEach(({ lon, lat, [RATE]: rate, [RESULT_CATEGORY]: category }) => {
-      if (category) {
-        let arr = result[category] = result[category] || []
-        arr.push([lon, lat, rate])
-      }
+function excel2json (filepath, callback, options) {
+  fileRead(filepath, (sheets, filename, workbook) => {
+    sheets.forEach(sheet => {
+      const sheetJson = xlsx.utils.sheet_to_json(sheet, options)
+      callback && callback(sheetJson, filename, sheet, workbook)
     })
-    return result
   })
-  fs.writeFile(path.join(__dirname, 'output', filename.replace(/\.xlsx$/, '.json')), JSON.stringify(positions[0]), () => {
+}
+
+excel2json(path.join(__dirname, 'source'), (data, filename) => {
+  if (data[0].label === 'Administrator') return
+  fs.writeFile(path.join(__dirname, 'output', filename.replace(/\.xlsx$/, '.1.json')), JSON.stringify(data.map(({ level, ...item }) => item)), () => {
     console.log('转换完成')
   })
-})
+  const result = [
+    {
+      label: '全部',
+      code: ''
+    }
+  ]
+  let temp = []
+  for (let i = 0, len = data.length; i < len; i++) {
+    let { level, ...item} = data[i]
+    if (!level) continue
+    // 判断是否存在子级，有则添加一个空的children数组用来存放子级
+    let next = data[i + 1]
+    if (next) {
+      if (level < next.level) {
+        item.children = []
+      }
+    }
+    temp[level] = item.children
+    if (level === 1) {
+      result.push(item)
+      continue
+    }
+    target = temp[level - 1]
+    target && target.push(item)
+  }
+  fs.writeFile(path.join(__dirname, 'output', filename.replace(/\.xlsx$/, '.json')), JSON.stringify(result), () => {
+    console.log('转换完成')
+  })
+}, { header: ['label', 'label', 'label', 'label', 'code', 'level'] })
